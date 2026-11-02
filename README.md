@@ -5,7 +5,7 @@ Today we would like to urge you as auditors to go through your clients code to m
 
 Not only the on-chain contracts might be affected, off-chain components can also be affected (e.g. by changes to the receipts).
 
-If you feel like you or one of your clients projects are affected, please contact us ONLY with a working exploit
+If you feel like you or one of your clients projects are affected, please [contact us](#contact-us), preferably with a working exploit.
 
 ## Checking your code with an AI agent
 
@@ -59,4 +59,16 @@ We are trying to collect feedback in order to have a well-founded discussion on 
 Your input is critical for that. Depending on the response we might decide to slightly change EIP-8037/8038 or not.
 
 Most findings we had reference INV-4 and INV-7, so they should probably be checked first.
-Please use the invariants to make sure your code is secure and respond back if not. 
+Please use the invariants to make sure your code is secure and respond back if not.
+
+## Contact us
+
+If your project breaks under these changes, please email us at
+[glamsterdam@ethereum.org](mailto:glamsterdam@ethereum.org). It helps us to know:
+
+- the project and the affected contracts (addresses or links to the source code);
+- which invariant it breaks and what goes wrong;
+- whether you can fix it yourself (a setting, an upgrade, a migration) and roughly when;
+- a test or transaction that shows it, if you have one.
+
+Please report by email, not in a public issue, so that problems can be fixed before they are widely known.

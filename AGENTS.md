@@ -14,8 +14,8 @@ EIP-8038). This file is the procedure. The invariants are described in `README.m
    - If all that is available is a deployed address or bytecode, stop. Ask for the source code instead.
 3. **The user's code stays with the user.** Do not send it, or anything you find, to any outside service, tracker or
    person.
-   - Report to the user only. Whether to contact anyone (see "Next steps" in `README.md`) is their decision.
-   - That contact is only for a working exploit.
+   - Report to the user only. Whether to contact anyone (see "Contact us" in `README.md`) is their decision.
+   - A report should preferably include a working exploit or a test that shows the problem.
 4. **Say what you checked and what you inferred.** "Checked" means a test or simulation under Glamsterdam rules
    showed it. "Inferred" means you worked it out from the code and the gas table. Never present an inferred issue as
    confirmed.
