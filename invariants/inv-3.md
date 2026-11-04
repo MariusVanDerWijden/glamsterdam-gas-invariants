@@ -8,8 +8,8 @@ misled. So is code that does not check whether a CREATE succeeded.
 
 ## Description
 
-Under EIP-8037, a reverted call creates no state. Any state gas it charged is credited back to its caller's normal
-gas. This includes state created by contracts it called in turn. A failed CREATE or CREATE2 works the same way: the
+Under EIP-8037, a reverted call creates no state. Any state gas it charged is credited back: what was paid from the reservoir returns to the reservoir, and on REVERT
+what was paid from normal gas returns to the caller's normal gas (a call that runs out of gas returns no normal gas). This includes state created by contracts it called in turn. A failed CREATE or CREATE2 works the same way: the
 183,600 charged for the new account comes back when the init code fails.
 
 That breaks two common habits.
