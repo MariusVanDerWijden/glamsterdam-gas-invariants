@@ -14,7 +14,8 @@ The main changes:
 |---|---|---|
 | Write to a new slot (zero to non-zero), cold | 22,100 | 110,020 (97,920 of it state gas) |
 | Update an existing slot, warm / cold | 2,900 / 5,000 | 10,100 / 12,100 |
-| Create an account (send ETH to an empty address, CREATE) | 25,000 | 183,600 of state gas plus execution |
+| Create an account by sending ETH to an empty address | 25,000 | 183,600 of state gas plus execution |
+| CREATE / CREATE2 to an empty address | 32,000 | 12,000 + 183,600 of state gas |
 | Deploy code | 200 per byte | 1,530 per byte |
 
 Unless the transaction's gas limit is above 2^24, all of this comes out of normal gas. So a call given a fixed amount

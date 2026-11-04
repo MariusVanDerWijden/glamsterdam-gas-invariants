@@ -60,7 +60,7 @@ For each place, answer these questions in order and write the answers down.
 
 1. **What runs out of gas?** Is it a whole transaction (an off-chain gas limit) or one inner call (a `gas:` argument,
    a signed limit, a reserve)?
-2. **Does the path create state?** New state costs about 88,000 more than today.
+2. **Does the path create state?** A new slot costs about 88,000 more than today, a new account about 160,000 more.
    - Write to a slot that may be zero: a first-time token recipient's balance, a new mapping entry, a counter starting
      at 0, a slot cleared in an earlier transaction.
    - Send ETH to an address that may be empty.
@@ -87,7 +87,8 @@ Work out the gas the path needs under Glamsterdam and compare it with the gas it
 |---|---|---|
 | New slot, cold | 22,100 | 110,020 |
 | Existing slot update, warm / cold | 2,900 / 5,000 | 10,100 / 12,100 |
-| New account | 25,000 | about 183,600 plus execution |
+| New account (value transfer) | 25,000 | 183,600 plus execution |
+| CREATE / CREATE2 to an empty address | 32,000 | 195,600 (12,000 if the address already holds ETH) |
 | Code | 200 per byte | 1,530 per byte |
 
 For example, a callback limited to 100,000 that writes two new slots needs at least 2 × 110,020 = 220,040 for those
