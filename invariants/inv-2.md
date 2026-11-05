@@ -50,11 +50,8 @@ contract Relay {
 pragma solidity ^0.8.28;
 
 contract Relay {
-    // Transient storage costs no state gas and refills nothing.
+    // Transient storage (EIP-1153) creates no state, so clearing it refills nothing.
     bool transient private inFlight;
-
-    uint256 public constant MESSAGE_GAS = 200_000;
-    uint256 public constant POST_CALL_GAS = 50_000;
 
     event Failed(bytes32 indexed messageHash);
 
@@ -62,18 +59,19 @@ contract Relay {
         require(!inFlight, "reentrant");
         inFlight = true;
 
-        // Revert instead of recording a failure when the caller supplied too little gas.
-        require(gasleft() * 63 / 64 >= MESSAGE_GAS + POST_CALL_GAS, "not enough gas");
-        (bool ok, ) = target.call{gas: MESSAGE_GAS}(message);
+        (bool ok, ) = target.call(message);
 
-        inFlight = false;
+        inFlight = false;                             // no refill: gasleft() does not go up
 
         if (!ok) {
-            emit Failed(keccak256(message));          // retryable: nothing permanent
+            emit Failed(keccak256(message));          // nothing permanent: relay can be called again
         }
     }
 }
 ```
+
+Transient storage removes the refill. It does not protect a failure branch that writes something permanent: that
+branch is still exposed to INV-1 and INV-6. If you must store the failure, make it retryable as shown there.
 
 ## Common pitfalls
 

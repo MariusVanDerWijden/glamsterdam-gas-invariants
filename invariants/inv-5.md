@@ -68,25 +68,21 @@ contract GasRefundingExecutor {
 pragma solidity ^0.8.28;
 
 contract GasRefundingExecutor {
-    uint256 public constant OVERHEAD = 21_000;
-    uint256 public maxRefundGas = 1_000_000;          // adjustable
-    uint256 public stateGasSurcharge;                 // per call, set for what targets are known to create
+    struct Request { address user; address target; bytes data; uint256 gasLimit; uint256 fee; uint256 nonce; }
 
-    function executeFor(address user, address target, bytes calldata data, uint256 gasLimit) external {
-        require(gasLimit <= maxRefundGas, "gas limit too high");
-        uint256 start = gasleft();
+    mapping(address => uint256) public nonces;
 
-        (bool ok, ) = target.call{gas: gasLimit}(data);
-        require(ok, "call failed");
+    // The relayer is paid the fee the user signed, not a gas measurement.
+    function executeFor(Request calldata req /*, bytes calldata signature */) external {
+        // ...verify the user's signature over req...
+        require(nonces[req.user] == req.nonce, "bad nonce");
+        nonces[req.user]++;
 
-        uint256 end = gasleft();
-        uint256 used = end < start ? start - end : 0; // never underflows
-        used += OVERHEAD + stateGasSurcharge;         // state gas the meter cannot see
-        if (used > maxRefundGas) used = maxRefundGas; // bound the payout
+        (bool ok, ) = req.target.call{gas: req.gasLimit}(req.data);
+        require(ok, "call failed");                   // reverts the nonce too: the relayer can retry
 
-        uint256 amount = used * tx.gasprice;
-        _chargeUser(user, amount);
-        (bool sent, ) = payable(msg.sender).call{value: amount}("");
+        _chargeUser(req.user, req.fee);
+        (bool sent, ) = payable(msg.sender).call{value: req.fee}("");
         require(sent, "payment failed");
     }
 
@@ -94,8 +90,19 @@ contract GasRefundingExecutor {
 }
 ```
 
-The fix bounds the damage: it cannot underflow and the payout is capped. Because `gasleft()` cannot see
-reservoir-paid state gas, any gas-metering design has to charge for state creation separately or accept the gap.
+Nothing is measured, so nothing can underflow or miss reservoir-paid state gas, and the relayer cannot raise the
+charge through `tx.gasprice`. The user and relayer agree on the fee off-chain, with an estimate made under the new
+rules.
+
+If you must meter, for example to refund unused prepayment, treat the reading as an estimate and let a limit the user
+signed decide the worst case:
+
+```solidity
+uint256 end = gasleft();
+uint256 used = end < start ? 0 : start - end;         // gasleft() can rise: clamp, do not wrap or revert
+uint256 fee = used * tx.gasprice;
+if (fee > req.maxFee) fee = req.maxFee;               // the meter misses reservoir-paid state gas
+```
 
 ## Common pitfalls
 
@@ -111,6 +118,8 @@ reservoir-paid state gas, any gas-metering design has to charge for state creati
 
 - **Treat a `gasleft()` difference as an estimate of normal gas only.** It never was exact (refunds and the 63/64
   rule already distorted it), and now it misses a whole class of cost.
+- **Do not patch the meter with fixed overheads or surcharges** (a constant 21,000, a per-call state-gas
+  surcharge). They encode today's gas schedule and break at the next repricing. Charge an agreed fee instead.
 - **The rule is under discussion.** A proposed spec change (EIPs PR #12581) stops `gasleft()` from rising. That
   fixes problem 1 but not problem 2.
 - **Related:** INV-2 (where the refill comes from).
