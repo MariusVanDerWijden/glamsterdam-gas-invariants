@@ -28,9 +28,10 @@ These values were measured in EELS on the pinned Amsterdam spec. They change if 
 |---|---|---|
 | SSTORE to a new slot (zero to non-zero), cold | 22,100 | 2,100 + 10,000 + **97,920** state gas = 110,020 |
 | SSTORE to an existing slot, warm / cold (EIP-8038) | 2,900 / 5,000 | 10,100 / 12,100 |
-| New account: value transfer to an empty address, or CREATE | 25,000 | **183,600** state gas plus execution |
+| New account: value transfer to an empty address | 25,000 | **183,600** state gas plus execution |
+| CREATE / CREATE2 to an empty address (excluding init code and code deposit) | 32,000 | 12,000 + **183,600** state gas = 195,600. If the address already holds ETH: 12,000 |
 | Code deposit | 200 per byte | **1,530** per byte, as state gas |
-| EIP-7702 authorization for an empty authority | 25,000 | 235,606 (183,600 of it state gas, charged at runtime) |
+| EIP-7702 authorization for an empty authority | 25,000 | 235,606: 7,816 intrinsic, then at runtime 9,000 + **218,790** state gas (183,600 new account + 35,190 delegation) |
 | Reservoir (state gas kept apart from `gasleft()`) | – | only when `tx.gas > 2^24` (16,777,216). Below that, all state gas comes out of `gasleft()` |
 
 ## Invariants
