@@ -72,35 +72,53 @@ interface IConsumer { function onRandom(uint256 requestId, uint256 randomness) e
 contract RandomnessOracle {
     struct Request { address consumer; uint32 callbackGas; }
 
-    uint32 public maxCallbackGas = 2_500_000;          // adjustable by governance
-    uint256 public constant POST_CALL_GAS = 30_000;
+    address public immutable governance;
+    uint32 public maxCallbackGas;                     // a bound, not a budget; governance can change it
 
+    uint256 public nextRequestId;
     mapping(uint256 => Request) public requests;
-    mapping(uint256 => uint256) public pendingRandomness;
+    mapping(address consumer => mapping(uint256 requestId => uint256)) public undelivered;
 
     event Fulfilled(uint256 indexed requestId, bool success);
 
+    constructor(address governance_, uint32 maxCallbackGas_) {
+        governance = governance_;
+        maxCallbackGas = maxCallbackGas_;
+    }
+
+    function setMaxCallbackGas(uint32 newMax) external {
+        require(msg.sender == governance, "not governance");
+        maxCallbackGas = newMax;
+    }
+
+    // The consumer knows what its callback does, so it picks the gas (and pays for it).
     function request(uint32 callbackGas) external returns (uint256 requestId) {
         require(callbackGas <= maxCallbackGas, "callback gas too high");
-        // ...store Request{msg.sender, callbackGas}, charge a fee that depends on callbackGas...
+        // ...charge a fee that depends on callbackGas...
+        requestId = ++nextRequestId;
+        requests[requestId] = Request(msg.sender, callbackGas);
     }
 
     function fulfill(uint256 requestId, uint256 randomness) external /* onlyOracleNode */ {
         Request memory r = requests[requestId];
-        require(gasleft() * 63 / 64 >= r.callbackGas + POST_CALL_GAS, "not enough gas");
+        require(r.consumer != address(0), "unknown request");
+        delete requests[requestId];                   // fulfilled once: the node cannot re-roll
 
         (bool ok, ) = r.consumer.call{gas: r.callbackGas}(
             abi.encodeCall(IConsumer.onRandom, (requestId, randomness))
         );
-        if (ok) {
-            delete requests[requestId];
-        } else {
-            pendingRandomness[requestId] = randomness; // the consumer can pull it later
+        if (!ok) {
+            // Not final: the consumer reads the value later. This writes a new slot (110,020 gas);
+            // if the node did not send enough for it, the whole fulfill reverts and is retried.
+            undelivered[r.consumer][requestId] = randomness;
         }
         emit Fulfilled(requestId, ok);
     }
 }
 ```
+
+No gas amount is written into the contract. The consumer picks its callback gas, governance can move the bound, and
+a callback that runs out of gas, at any price, loses nothing.
 
 ## Common pitfalls
 

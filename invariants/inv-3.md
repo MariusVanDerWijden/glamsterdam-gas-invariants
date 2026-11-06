@@ -69,25 +69,24 @@ state gas comes back to `flush`, and `reason` is not empty. The validator is ref
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-interface IRegistry { function register(address validator) external; }
+interface IRegistry {
+    function canRegister(address validator) external view returns (bool);
+    function register(address validator) external;
+}
 
 contract Depositor {
     IRegistry public immutable registry;
-    uint256 public constant REGISTER_GAS = 400_000;   // sized at Amsterdam prices
-    uint256 public constant POST_CALL_GAS = 60_000;
-
     mapping(address => uint256) public deposits;
 
     constructor(IRegistry r) { registry = r; }
 
+    // Anyone can call this, with any gas.
     function flush(address validator) external {
-        // Make sure the callee gets its full budget. Then any failure is a real one,
-        // whatever the revert data or the gas left looks like.
-        require(gasleft() * 63 / 64 >= REGISTER_GAS + POST_CALL_GAS, "not enough gas");
-
-        try registry.register{gas: REGISTER_GAS}(validator) {
-            // registered
-        } catch {
+        if (registry.canRegister(validator)) {
+            // No try/catch: any failure reverts, so the deposit stays and anyone can retry with more gas.
+            registry.register(validator);
+        } else {
+            // The registry said no. The permanent branch rests on that answer, not on a failed call.
             uint256 amount = deposits[validator];
             deposits[validator] = 0;
             (bool sent, ) = payable(validator).call{value: amount}("");
@@ -96,6 +95,10 @@ contract Depositor {
     }
 }
 ```
+
+The decision to refund no longer depends on why a call failed, so nothing here assumes how much gas `register`
+needs. A starved `canRegister` reverts the whole transaction; it does not return `false`. If the registry has no such
+check, revert on every failure and let the depositor take the deposit back in a separate transaction.
 
 For contract creation, check the result:
 
@@ -118,8 +121,9 @@ require(deployed != address(0) && deployed.code.length > 0, "deploy failed");
 
 ## Other things to consider
 
-- **The only robust way** to know a failure is "real" is to make sure the callee received the gas it needed before
-  calling. After the call, the gas left tells you nothing reliable.
+- **After the call, the gas left tells you nothing reliable** about why it failed. Do not take a permanent branch on
+  a failure. Revert so the operation can be retried, base the branch on an explicit answer (as above), or make sure
+  before the call that the callee will receive the gas it needs (as in INV-6).
 - **The rule is under discussion.** Proposed spec changes would send the handed-back gas to the reservoir instead
   (EIPs PR #12581), or burn it. Either would remove much of this. Do not rely on today's behaviour, in either
   direction.

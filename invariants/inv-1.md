@@ -70,34 +70,29 @@ contract MessageProcessor {
 pragma solidity ^0.8.28;
 
 contract MessageProcessor {
-    struct Message { address target; bytes data; uint256 gasLimit; }
-
-    // Normal gas needed after the call. Size it at Amsterdam prices.
-    uint256 public constant POST_CALL_GAS = 50_000;
+    struct Message { address target; bytes data; }
 
     mapping(uint256 => Message) public messages;
     mapping(uint256 => bool) public processed;
 
-    event Failed(uint256 indexed id);
-
+    // Anyone can call this, with any gas.
     function process(uint256 id) external {
         require(!processed[id], "already processed");
+        processed[id] = true;                         // set before the call, so the target cannot re-enter
+
         Message memory m = messages[id];
+        (bool ok, ) = m.target.call(m.data);
 
-        // EIP-150: the callee gets at most 63/64 of what is left. Revert, rather than
-        // record a failure, if the caller did not supply enough gas.
-        require(gasleft() * 63 / 64 >= m.gasLimit + POST_CALL_GAS, "not enough gas");
-
-        (bool ok, ) = m.target.call{gas: m.gasLimit}(m.data);
-
-        if (ok) {
-            processed[id] = true;
-        } else {
-            emit Failed(id);                          // nothing permanent: the message can be retried
-        }
+        // Revert on any failure, starved or not. `processed` is rolled back and anyone can retry
+        // with more gas. Nothing here assumes how much gas the message needs.
+        require(ok, "call failed");
     }
 }
 ```
+
+If your protocol must act on a message that fails for good (for example, refund it on the source chain), do not
+decide that inside `process`, where the caller picks the gas. Let a party that does not pick it decide in a separate
+transaction, such as the message's sender, or check the gas before the call as in INV-6.
 
 ## Common pitfalls
 

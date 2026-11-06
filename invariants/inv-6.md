@@ -56,26 +56,41 @@ contract TaskExecutor {
 pragma solidity ^0.8.28;
 
 contract TaskExecutor {
-    struct Task { address target; bytes data; uint256 gasLimit; bool done; }
+    // minGas: what the call needs, with some headroom for the CALL itself (account access, memory).
+    struct Task { address owner; address target; bytes data; uint256 minGas; bool done; }
     mapping(uint256 => Task) public tasks;
-
-    uint256 public constant POST_CALL_GAS = 30_000;
 
     event Executed(uint256 indexed id, bool success);
 
+    // The task's owner knows what the call needs and can raise it when prices change.
+    function setMinGas(uint256 id, uint256 minGas) external {
+        require(msg.sender == tasks[id].owner, "not owner");
+        tasks[id].minGas = minGas;
+    }
+
+    // Anyone can call this, with any gas.
     function execute(uint256 id) external {
         Task storage t = tasks[id];
         require(!t.done, "done");
+        t.done = true;                                // before the call, so the target cannot re-enter
 
-        // The task says how much gas it needs. Refuse to run it with less.
-        require(gasleft() * 63 / 64 >= t.gasLimit + POST_CALL_GAS, "not enough gas");
+        // Read everything from storage first, so no gas is spent between the check and the call.
+        address target = t.target;
+        bytes memory data = t.data;
+        uint256 minGas = t.minGas;
 
-        (bool ok, ) = t.target.call{gas: t.gasLimit}(t.data);
-        if (ok) t.done = true;                        // a failure leaves the task open for a retry
+        // EIP-150: the callee gets at most 63/64 of the gas left. Revert unless it gets at least
+        // minGas, so a failure below is the task's own and not a starved call.
+        require(gasleft() >= minGas * 64 / 63, "not enough gas");
+        (bool ok, ) = target.call(data);              // all gas forwarded: minGas is a floor, not a cap
         emit Executed(id, ok);
     }
 }
 ```
+
+The contract holds no gas number of its own. The gas a task needs belongs to the task, and its owner can raise it.
+The executor can always send more: forwarding all gas means a floor that was set too low does not cap the call.
+Where failing for good is not acceptable at all, revert on failure instead, as in INV-1.
 
 ## Common pitfalls
 
@@ -90,9 +105,10 @@ contract TaskExecutor {
 
 ## Other things to consider
 
-- **The fix has two parts:**
-  - check before the call that the callee will get the gas it needs (allowing for the 63/64 rule);
-  - make failures retryable instead of final.
+- **The fix is one of two things:**
+  - make failures retryable instead of final (the simplest: revert on failure);
+  - check before the call that the callee will get the gas it needs, allowing for the 63/64 rule. Take that amount
+    from whoever knows the work and let them change it. A constant in the contract fails at the next repricing.
 - **Watch functions that anyone can call:** relayers, keepers, bridge finalisation, multisig execution. The caller
   picks the gas there.
 - **Related:** INV-1 (with a reservoir, the failure branch needs even less normal gas) and INV-7 (reserves sized for

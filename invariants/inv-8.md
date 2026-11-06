@@ -60,23 +60,40 @@ contract SmartAccount {
 pragma solidity ^0.8.28;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
+import {EIP712} from "@openzeppelin/contracts/utils/cryptography/EIP712.sol";
 
-contract SmartAccount {
-    address public owner;
+contract SmartAccount is EIP712("SmartAccount", "1") {
+    bytes32 private constant INITIALIZE_TYPEHASH = keccak256("Initialize(address owner)");
 
-    // Under 7702, address(this) is the EOA. Only its key can approve the owner.
+    // ERC-7201 namespaced storage: an earlier delegate's leftovers in slot 0 cannot pre-set the owner.
+    /// @custom:storage-location erc7201:smartaccount.main
+    struct AccountStorage { address owner; }
+
+    // keccak256(abi.encode(uint256(keccak256("smartaccount.main")) - 1)) & ~bytes32(uint256(0xff))
+    bytes32 private constant STORAGE_SLOT = 0xc6d72c385c20bb6fd26c8bcca0502e9cc898ba648d6bf14a5dee4c78dff00d00;
+
+    function _s() private pure returns (AccountStorage storage s) {
+        assembly { s.slot := STORAGE_SLOT }
+    }
+
+    function owner() public view returns (address) {
+        return _s().owner;
+    }
+
+    // Under 7702, address(this) is the EOA. Only its key can approve the owner. The EIP-712 domain
+    // contains the chain id and address(this), so the signature is valid for this account only.
     function initialize(address newOwner, bytes calldata signature) external {
-        require(owner == address(0), "already initialized");
-        bytes32 digest = keccak256(abi.encode(block.chainid, address(this), newOwner, "SmartAccount.initialize"));
+        require(_s().owner == address(0), "already initialized");
+        bytes32 digest = _hashTypedDataV4(keccak256(abi.encode(INITIALIZE_TYPEHASH, newOwner)));
         require(ECDSA.recover(digest, signature) == address(this), "not signed by account");
-        owner = newOwner;
+        _s().owner = newOwner;
     }
 
     // Simpler alternative when the EOA sends the setup itself:
     // require(msg.sender == address(this), "only self");
 
     function execute(address to, uint256 value, bytes calldata data) external {
-        require(msg.sender == owner || msg.sender == address(this), "not owner");
+        require(msg.sender == _s().owner || msg.sender == address(this), "not owner");
         (bool ok, ) = to.call{value: value}(data);
         require(ok, "call failed");
     }
@@ -102,7 +119,10 @@ Off-chain, after a delegation transaction is mined:
 ## Other things to consider
 
 - **Bind initialization to the account's own signature or to self-calls,** and include the chain id and the account
-  address in what is signed.
+  address in what is signed. Use EIP-712 typed data, so the wallet can show the user what they sign, rather than a
+  raw hash.
+- **Keep a delegate's state in namespaced storage (ERC-7201).** An EOA can switch delegates, and slots written by an
+  earlier one stay behind.
 - **If a delegation transaction fails,** treat the authorization as exposed. Revoke it by sending a transaction that
   advances the account's nonce, or delegate again to a safe contract.
 - **A spec change has been suggested** (charging the worst-case authorization cost up front, so an underfunded
