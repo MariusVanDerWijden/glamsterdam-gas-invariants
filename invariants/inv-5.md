@@ -99,9 +99,9 @@ signed decide the worst case:
 
 ```solidity
 uint256 end = gasleft();
-uint256 used = end < start ? 0 : start - end;         // gasleft() can rise: clamp, do not wrap or revert
+uint256 used = end < start ? start - end : 0;         // gasleft() can rise: clamp, do not wrap or revert
 uint256 fee = used * tx.gasprice;
-if (fee > req.maxFee) fee = req.maxFee;               // the meter misses reservoir-paid state gas
+if (fee > req.fee) fee = req.fee;                     // the meter misses reservoir-paid state gas
 ```
 
 ## Common pitfalls
